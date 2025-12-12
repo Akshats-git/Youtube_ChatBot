@@ -203,4 +203,4 @@ For issues and questions:
 
 ---
 
-**Made with ❤️ for AI enthusiasts and learners**
+**Made with ❤️ by Akshat**
