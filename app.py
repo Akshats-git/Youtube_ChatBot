@@ -171,39 +171,56 @@ def initialize_session_state():
         st.session_state.selected_language = 'en'
 
 
-def load_video(video_id: str, language: str = 'en'):
+def load_video(video_input: str, language: str = 'en', force_rebuild: bool = False):
     """Load and process a YouTube video."""
     try:
-        # Validate video ID
-        if not YouTubeUtils.validate_video_id(video_id):
-            st.error(f"Invalid YouTube video ID. Video IDs are 11 characters long.\nExample: aqz-KE-bpKQ")
+        video_id = YouTubeUtils.extract_video_id(video_input)
+        if not video_id:
+            st.error("Invalid YouTube URL or video ID. Please provide a valid link or 11-character ID.")
             return False
-        
-        st.info("🔍 Validating video ID...")
-        
-        # Show loading message
-        with st.spinner("📊 Loading video information..."):
-            # Get video info
-            video_info = YouTubeUtils.get_video_info(video_id)
-            
-            if "error" in video_info:
-                st.info(f"⚠️ Could not fetch video metadata, but continuing with transcript...")
-        
-        with st.spinner(f"📥 Fetching video transcript in {language.upper()}... This may take a moment..."):
-            # Get transcript with selected language
-            transcript = YouTubeUtils.get_transcript(video_id, languages=[language])
-            
-            if not transcript:
-                st.error(f"❌ Could not fetch transcript for this video in {language.upper()}.\n\nMake sure the video has captions available in the selected language.")
+
+        with st.status("Loading video...", expanded=True) as status:
+            status.update(label="Validating video ID", state="running")
+            if not YouTubeUtils.validate_video_id(video_id):
+                status.update(label="Invalid video ID", state="error")
+                st.error("Invalid YouTube video ID. Video IDs are 11 characters long. Example: aqz-KE-bpKQ")
                 return False
-            
-            st.success(f"✅ Transcript fetched successfully! ({len(transcript)} characters)")
-        
-        with st.spinner("🤖 Initializing AI chatbot..."):
-            # Initialize chatbot
+
+            status.update(label="Fetching video metadata", state="running")
+            video_info = YouTubeUtils.get_video_info(video_id)
+            if "error" in video_info:
+                st.info("Could not fetch metadata, but continuing with transcript.")
+
+            status.update(label=f"Fetching transcript ({language.upper()})", state="running")
+            transcript_segments = YouTubeUtils.get_transcript_segments(video_id, languages=[language])
+
+            if not transcript_segments:
+                status.update(label="Transcript fetch failed", state="error")
+                st.error(
+                    f"Could not fetch transcript for this video in {language.upper()}. "
+                    "Make sure the video has captions available in the selected language."
+                )
+                return False
+
+            transcript_text = " ".join(segment["text"] for segment in transcript_segments)
+            status.update(
+                label=f"Transcript fetched ({len(transcript_text)} characters)",
+                state="complete"
+            )
+
+            status.update(label="Building RAG index", state="running")
             chatbot = YouTubeChatBot()
-            chatbot.initialize_vectorstore(transcript, video_info)
-        
+            chatbot.initialize_vectorstore(
+                transcript_segments=transcript_segments,
+                video_info=video_info,
+                video_id=video_id,
+                language=language,
+                force_rebuild=force_rebuild
+            )
+
+            status.update(label="RAG index ready", state="complete")
+            status.update(label="Ready to chat", state="complete")
+
         # Update session state
         st.session_state.chatbot = chatbot
         st.session_state.video_loaded = True
@@ -211,12 +228,12 @@ def load_video(video_id: str, language: str = 'en'):
         st.session_state.current_video_id = video_id
         st.session_state.chat_history = []
         st.session_state.selected_language = language
-        
-        st.success("✅ Video loaded successfully! You can now ask questions about the video.")
+
+        st.success("Video loaded successfully! You can now ask questions about the video.")
         return True
-    
+
     except Exception as e:
-        st.error(f"❌ An error occurred: {str(e)}")
+        st.error(f"An error occurred: {str(e)}")
         import traceback
         st.error(f"Details: {traceback.format_exc()}")
         return False
@@ -227,7 +244,9 @@ def display_video_info():
     if st.session_state.video_info:
         info = st.session_state.video_info
         st.sidebar.markdown("### Video Information")
+        st.sidebar.markdown(f"**Title:** {info.get('title', 'N/A')}")
         st.sidebar.markdown(f"**Video ID:** {info.get('video_id', 'N/A')}")
+        st.sidebar.markdown(f"**Language:** {st.session_state.selected_language.upper()}")
         
         if st.sidebar.button("Load New Video", use_container_width=True):
             st.session_state.video_loaded = False
@@ -235,6 +254,54 @@ def display_video_info():
             st.session_state.chat_history = []
             st.session_state.chatbot = None
             st.rerun()
+
+
+def format_timestamp(seconds: float) -> str:
+    """Format seconds into MM:SS or HH:MM:SS."""
+    total_seconds = int(max(seconds, 0))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
+
+def build_chat_markdown(chat_history: list) -> str:
+    """Build a markdown transcript of the chat conversation."""
+    lines = []
+    for message in chat_history:
+        role = "User" if message.get("role") == "user" else "Assistant"
+        lines.append(f"**{role}:** {message.get('content', '')}")
+        sources = message.get("sources", [])
+        if sources:
+            lines.append("Sources:")
+            for source in sources:
+                time_range = f"{format_timestamp(source['start_time'])}-{format_timestamp(source['end_time'])}"
+                snippet = source.get("text", "").strip().replace("\n", " ")
+                snippet = snippet[:200] + ("..." if len(snippet) > 200 else "")
+                lines.append(f"- [{source['index']}] {time_range} {snippet}")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+def display_summary_panel():
+    """Display summary and key topics for the loaded video."""
+    chatbot = st.session_state.chatbot
+    if not chatbot:
+        return
+
+    summary = chatbot.get_video_summary()
+    topics = chatbot.get_video_topics()
+
+    if not summary and not topics:
+        return
+
+    st.markdown('<div class="section-header">Video Summary</div>', unsafe_allow_html=True)
+    if summary:
+        st.markdown(summary)
+    if topics:
+        st.markdown("**Key topics**")
+        st.markdown("\n".join([f"- {topic}" for topic in topics]))
 
 
 def display_chat_interface():
@@ -256,6 +323,18 @@ def display_chat_interface():
                         <strong>Assistant</strong><br>{message['content']}
                     </div>
                 """, unsafe_allow_html=True)
+
+                sources = message.get("sources", [])
+                if sources:
+                    with st.expander("Sources", expanded=False):
+                        for source in sources:
+                            time_range = (
+                                f"{format_timestamp(source['start_time'])}"
+                                f"-{format_timestamp(source['end_time'])}"
+                            )
+                            snippet = source.get("text", "").strip().replace("\n", " ")
+                            snippet = snippet[:300] + ("..." if len(snippet) > 300 else "")
+                            st.markdown(f"- [{source['index']}] {time_range} {snippet}")
     else:
         st.info("No messages yet. Ask a question below to start the conversation.")
     
@@ -282,11 +361,13 @@ def display_chat_interface():
         with st.spinner("🤔 Thinking..."):
             response = st.session_state.chatbot.ask_question(user_question)
             answer = response['answer']
+            sources = response.get('sources', [])
         
         # Add bot response to history
         st.session_state.chat_history.append({
             'role': 'assistant',
-            'content': answer
+            'content': answer,
+            'sources': sources
         })
         
         st.rerun()
@@ -322,17 +403,17 @@ def main():
         st.markdown("---")
         st.markdown("### How to Use")
         st.markdown("""
-        1. Enter a YouTube video ID (11 characters)
+        1. Paste a YouTube URL or video ID
         2. Select the transcript language
-        3. Click 'Load Video'
-        4. Start asking questions about the video content
+        3. Click 'Load Video' to build the RAG index
+        4. Ask questions about the video content
         """)
         
         st.markdown("---")
         st.markdown("### About")
         st.markdown("""
-        This assistant uses AI to answer questions about YouTube videos 
-        based on their transcripts. 
+        This assistant uses retrieval-augmented generation (RAG) to answer
+        questions grounded in YouTube transcripts.
         """)
     
     # Main content area
@@ -343,14 +424,20 @@ def main():
         col1, col2 = st.columns([4, 1])
         
         with col1:
-            video_id = st.text_input(
-                "Enter YouTube Video ID:",
-                placeholder="aqz-KE-bpKQ (11 characters)",
+            video_input = st.text_input(
+                "Enter YouTube URL or Video ID:",
+                placeholder="https://www.youtube.com/watch?v=aqz-KE-bpKQ",
                 label_visibility="collapsed"
             )
         
         with col2:
             load_button = st.button("Load Video", type="primary", use_container_width=True)
+
+        force_rebuild = st.checkbox(
+            "Rebuild index",
+            value=False,
+            help="Recreate the vector index even if a cached version exists."
+        )
         
         # Language selection
         st.markdown("")
@@ -384,9 +471,14 @@ def main():
         )
         selected_language_code = language_options[selected_language_name]
         
-        if load_button and video_id:
-            load_video(video_id, language=selected_language_code)
-            st.rerun()
+        if load_button and video_input:
+            success = load_video(
+                video_input,
+                language=selected_language_code,
+                force_rebuild=force_rebuild
+            )
+            if success:
+                st.rerun()
         
         # Example section
         # st.markdown("<br>", unsafe_allow_html=True)
@@ -394,18 +486,29 @@ def main():
         #     st.code("aqz-KE-bpKQ")
     
     else:
+        display_summary_panel()
+        st.markdown("<br>", unsafe_allow_html=True)
         # Display chat interface
         display_chat_interface()
         
         # Clear chat button
         st.markdown("<br>", unsafe_allow_html=True)
-        col1, col2 = st.columns([1, 5])
+        col1, col2, col3 = st.columns([1, 2, 3])
         with col1:
             if st.button("Clear Chat", use_container_width=True):
                 st.session_state.chat_history = []
                 if st.session_state.chatbot:
                     st.session_state.chatbot.reset_conversation()
                 st.rerun()
+        with col2:
+            chat_markdown = build_chat_markdown(st.session_state.chat_history)
+            st.download_button(
+                "Download Chat",
+                data=chat_markdown,
+                file_name=f"chat_{st.session_state.current_video_id}.md",
+                mime="text/markdown",
+                use_container_width=True
+            )
 
 
 if __name__ == "__main__":

@@ -4,13 +4,18 @@ An intelligent conversational AI application that allows users to interact with 
 
 ## ✨ Features
 
-- 🎬 **Easy Video Loading**: Just paste any YouTube video URL
+- 🎬 **Easy Video Loading**: Paste a YouTube URL or video ID
 - 💬 **Natural Conversations**: Ask questions in plain English about the video content
 - 🧠 **AI-Powered**: Uses OpenAI's GPT models and embeddings for accurate responses
 - 📝 **Transcript Analysis**: Automatically extracts and processes video transcripts
+- 🔍 **Hybrid Retrieval**: Combines BM25 + vector search for higher recall
+- 🔁 **Query Intelligence**: Query rewriting + multi-query expansion for better retrieval
+- 🧾 **Source Citations**: Timestamped sources shown for every answer
+- 🧠 **Video Summary & Topics**: Auto-generated overview and key topics
+- 💾 **Persistent Indexing**: Saves FAISS indexes to disk for fast reloads
+- 📥 **Chat Export**: Download conversation as Markdown
 - 🎨 **Beautiful UI**: Clean and intuitive Streamlit interface
 - 💾 **Conversation Memory**: Maintains context throughout your chat session
-- 🔍 **Smart Search**: Uses vector embeddings to find relevant information
 
 ## 🏗️ Project Structure
 
@@ -27,7 +32,7 @@ YouTube_ChatBot/
 │       ├── __init__.py
 │       ├── youtube_utils.py        # YouTube video operations
 │       └── text_processor.py       # Text chunking and processing
-├── data/                           # Data storage (gitignored)
+├── data/                           # Cached indexes (gitignored)
 ├── requirements.txt                # Python dependencies
 ├── .env.example                    # Environment variables template
 ├── .gitignore                      # Git ignore rules
@@ -84,8 +89,20 @@ OPENAI_API_KEY=your_openai_api_key_here
 # Optional - defaults are set
 MODEL_NAME=gpt-3.5-turbo
 EMBEDDING_MODEL=text-embedding-ada-002
+QUERY_TEMPERATURE=0.0
 CHUNK_SIZE=1000
 CHUNK_OVERLAP=200
+RETRIEVAL_K=6
+BM25_K=6
+FINAL_K=6
+MULTIQUERY_COUNT=3
+MAX_CONTEXT_CHARS=8000
+ENABLE_QUERY_REWRITE=true
+ENABLE_MULTIQUERY=true
+ENABLE_COMPRESSION=true
+INDEX_DIR=data/indexes
+SUMMARY_MAX_CHUNKS=6
+SUMMARY_MAX_TOKENS=300
 ```
 
 ## 🎮 Usage
@@ -100,8 +117,8 @@ CHUNK_OVERLAP=200
    - If not, navigate to the URL manually
 
 3. **Use the chatbot:**
-   - Paste a YouTube video URL in the input field
-   - Click "Load Video" and wait for processing
+   - Paste a YouTube URL or video ID in the input field
+   - Click "Load Video" to build the RAG index (use "Rebuild index" if needed)
    - Start asking questions about the video!
    - Example questions:
      - "What is the main topic of this video?"
@@ -111,11 +128,12 @@ CHUNK_OVERLAP=200
 ## 🛠️ Technology Stack
 
 - **Frontend**: Streamlit
-- **AI/ML**: 
-  - OpenAI GPT-3.5/4 for chat
-  - OpenAI Embeddings for semantic search
-  - LangChain for orchestration
-  - FAISS for vector storage
+- **AI/ML**:
+   - OpenAI GPT-3.5/4 for chat
+   - OpenAI Embeddings for semantic search
+   - LangChain for orchestration
+   - FAISS for vector storage (persisted on disk)
+   - BM25 (rank_bm25) for lexical retrieval
 - **YouTube Integration**:
   - youtube-transcript-api for transcript extraction
   - pytube for video metadata
@@ -133,18 +151,23 @@ CHUNK_OVERLAP=200
 2. **Text Processing**: The transcript is:
    - Cleaned and preprocessed
    - Split into manageable chunks with overlap
-   - Converted to vector embeddings
+   - Converted to vector embeddings and indexed with metadata
+   - Stored on disk for fast reloads
 
 3. **Question Answering**: When you ask a question:
-   - Your question is converted to an embedding
-   - Similar chunks are retrieved from the vector store
-   - The AI generates an answer based on relevant context
+   - The query is rewritten and expanded into multiple search queries
+   - Hybrid retrieval (BM25 + vector) selects the best transcript chunks
+   - Context is compressed and ranked for relevance
+   - The AI generates an answer grounded in retrieved sources with citations
    - Conversation history is maintained for context
+
+> **Note:** The app does not train a model on your data. It builds a searchable index over the transcript and uses RAG to answer questions.
 
 ## 🔒 Privacy & Security
 
 - Your OpenAI API key is stored locally in `.env` (gitignored)
-- No video data or conversations are stored permanently
+- Transcript-derived vector indexes are cached locally in `data/indexes` (delete to remove)
+- Conversations are session-only unless you export them
 - All processing happens on your machine and OpenAI's servers
 - No third-party data collection
 
