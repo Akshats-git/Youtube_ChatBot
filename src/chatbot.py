@@ -5,6 +5,7 @@ Implements the conversational AI for answering questions about YouTube videos.
 
 import importlib
 import json
+import re
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
@@ -444,6 +445,37 @@ Sources:
 
     def get_video_topics(self) -> List[str]:
         return self.video_topics
+
+    def _is_small_talk(self, question: str) -> bool:
+        """Detect greeting/chitchat prompts that should not trigger transcript retrieval."""
+        normalized = question.strip().lower()
+        if not normalized:
+            return True
+
+        small_talk_patterns = {
+            "hi", "hello", "hey", "yo", "hola",
+            "good morning", "good afternoon", "good evening",
+            "how are you", "what's up", "whats up"
+        }
+
+        if normalized in small_talk_patterns:
+            return True
+
+        if len(normalized.split()) <= 2 and any(token in normalized for token in ["hi", "hello", "hey"]):
+            return True
+
+        return False
+
+    def _filter_sources_by_citation(self, answer: str, sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Return only sources that are explicitly cited in the answer text."""
+        if not sources or not answer:
+            return []
+
+        cited_indices = {int(match) for match in re.findall(r"\[(\d+)\]", answer)}
+        if not cited_indices:
+            return []
+
+        return [source for source in sources if int(source.get("index", -1)) in cited_indices]
     
     def ask_question(self, question: str) -> dict:
         """
@@ -462,6 +494,18 @@ Sources:
             }
         
         try:
+            if self._is_small_talk(question):
+                answer = (
+                    "Hello! Ask me anything about this video's content, and I will answer "
+                    "using the transcript."
+                )
+                self.chat_history.append(HumanMessage(content=question))
+                self.chat_history.append(AIMessage(content=answer))
+                return {
+                    "answer": answer,
+                    "sources": []
+                }
+
             search_query = self._rewrite_query(question)
             queries = self._dedupe_queries(
                 [question, search_query] + self._generate_multi_queries(search_query)
@@ -474,12 +518,14 @@ Sources:
 
             if not context:
                 answer = "I cannot find that information in the video."
+                sources = []
             else:
                 answer = self.answer_chain.invoke({
                     "question": question,
                     "context": context,
                     "chat_history": self.chat_history
                 })
+                sources = self._filter_sources_by_citation(answer, sources)
             
             # Add to chat history
             self.chat_history.append(HumanMessage(content=question))

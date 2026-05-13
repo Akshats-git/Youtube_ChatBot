@@ -6,6 +6,7 @@ Main frontend application for the YouTube video chatbot.
 import streamlit as st
 import sys
 import os
+from typing import List, Dict, Any
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -45,7 +46,7 @@ st.markdown("""
     
     .sub-header {
         font-size: 1.1rem;
-        color: #6b7280;
+        color: #e5e7eb;
         text-align: center;
         margin-bottom: 2.5rem;
         font-weight: 400;
@@ -105,10 +106,36 @@ st.markdown("""
     .section-header {
         font-size: 1.5rem;
         font-weight: 600;
-        color: #1f2937;
+        color: #f9fafb;
         margin: 2rem 0 1rem 0;
         padding-bottom: 0.5rem;
-        border-bottom: 2px solid #e5e7eb;
+        border-bottom: 2px solid #374151;
+    }
+
+    .transcript-box {
+        background-color: #111827;
+        border: 1px solid #374151;
+        border-radius: 10px;
+        padding: 0.75rem;
+        color: #f9fafb;
+        max-height: 320px;
+        overflow-y: auto;
+        font-size: 0.92rem;
+        line-height: 1.45;
+        white-space: pre-wrap;
+    }
+
+    [data-testid="stChatMessage"] {
+        border-radius: 12px;
+        border: 1px solid #374151;
+        background: #111827;
+        padding: 0.4rem 0.6rem;
+    }
+
+    [data-testid="stChatMessage"] p,
+    [data-testid="stChatMessage"] li,
+    [data-testid="stChatMessage"] div {
+        color: #f3f4f6;
     }
     
     /* Input styling */
@@ -169,6 +196,10 @@ def initialize_session_state():
         st.session_state.current_video_id = ""
     if 'selected_language' not in st.session_state:
         st.session_state.selected_language = 'en'
+    if 'transcript_segments' not in st.session_state:
+        st.session_state.transcript_segments = []
+    if 'transcript_text' not in st.session_state:
+        st.session_state.transcript_text = ""
 
 
 def load_video(video_input: str, language: str = 'en', force_rebuild: bool = False):
@@ -228,6 +259,8 @@ def load_video(video_input: str, language: str = 'en', force_rebuild: bool = Fal
         st.session_state.current_video_id = video_id
         st.session_state.chat_history = []
         st.session_state.selected_language = language
+        st.session_state.transcript_segments = transcript_segments
+        st.session_state.transcript_text = transcript_text
 
         st.success("Video loaded successfully! You can now ask questions about the video.")
         return True
@@ -253,6 +286,8 @@ def display_video_info():
             st.session_state.video_info = None
             st.session_state.chat_history = []
             st.session_state.chatbot = None
+            st.session_state.transcript_segments = []
+            st.session_state.transcript_text = ""
             st.rerun()
 
 
@@ -307,26 +342,20 @@ def display_summary_panel():
 def display_chat_interface():
     """Display the chat interface."""
     st.markdown('<div class="section-header">Conversation</div>', unsafe_allow_html=True)
-    
-    # Display chat history
-    if st.session_state.chat_history:
-        for message in st.session_state.chat_history:
-            if message['role'] == 'user':
-                st.markdown(f"""
-                    <div class="chat-message user-message">
-                        <strong>You</strong><br>{message['content']}
-                    </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown(f"""
-                    <div class="chat-message bot-message">
-                        <strong>Assistant</strong><br>{message['content']}
-                    </div>
-                """, unsafe_allow_html=True)
 
+    if not st.session_state.chat_history:
+        st.info("No messages yet. Ask a question below to start the conversation.")
+
+    for message in st.session_state.chat_history:
+        role = message.get("role", "assistant")
+        avatar = "🧑" if role == "user" else "🤖"
+        with st.chat_message("user" if role == "user" else "assistant", avatar=avatar):
+            st.markdown(message.get("content", ""))
+
+            if role == "assistant":
                 sources = message.get("sources", [])
                 if sources:
-                    with st.expander("Sources", expanded=False):
+                    with st.expander("Sources used for this reply", expanded=False):
                         for source in sources:
                             time_range = (
                                 f"{format_timestamp(source['start_time'])}"
@@ -335,42 +364,69 @@ def display_chat_interface():
                             snippet = source.get("text", "").strip().replace("\n", " ")
                             snippet = snippet[:300] + ("..." if len(snippet) > 300 else "")
                             st.markdown(f"- [{source['index']}] {time_range} {snippet}")
-    else:
-        st.info("No messages yet. Ask a question below to start the conversation.")
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Chat input
-    with st.form(key="chat_form", clear_on_submit=True):
-        user_question = st.text_input(
-            "Ask your question",
-            placeholder="What is this video about?",
-            key="user_input",
-            label_visibility="collapsed"
-        )
-        submit_button = st.form_submit_button("Send Message", use_container_width=True, type="primary")
-    
-    if submit_button and user_question:
-        # Add user message to history
+
+    user_question = st.chat_input("Ask about the video")
+    if user_question:
         st.session_state.chat_history.append({
             'role': 'user',
             'content': user_question
         })
-        
-        # Get bot response
-        with st.spinner("🤔 Thinking..."):
+
+        with st.spinner("Thinking..."):
             response = st.session_state.chatbot.ask_question(user_question)
-            answer = response['answer']
+            answer = response.get('answer', '')
             sources = response.get('sources', [])
-        
-        # Add bot response to history
+
         st.session_state.chat_history.append({
             'role': 'assistant',
             'content': answer,
             'sources': sources
         })
-        
+
         st.rerun()
+
+
+def _build_transcript_lines(segments: List[Dict[str, Any]]) -> str:
+    """Render transcript segments as timestamped text lines."""
+    lines = []
+    for segment in segments:
+        text = (segment.get("text") or "").strip()
+        if not text:
+            continue
+        start = float(segment.get("start", 0.0))
+        duration = float(segment.get("duration", 0.0))
+        end = max(start + duration, start)
+        lines.append(f"[{format_timestamp(start)}-{format_timestamp(end)}] {text}")
+    return "\n".join(lines)
+
+
+def display_transcript_panel():
+    """Display transcript view and download options."""
+    segments = st.session_state.get("transcript_segments", [])
+    transcript_text = st.session_state.get("transcript_text", "")
+
+    if not transcript_text and not segments:
+        return
+
+    st.markdown('<div class="section-header">Transcript</div>', unsafe_allow_html=True)
+    transcript_with_timestamps = _build_transcript_lines(segments)
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        with st.expander("View transcript", expanded=False):
+            st.markdown(
+                f'<div class="transcript-box">{transcript_with_timestamps or transcript_text}</div>',
+                unsafe_allow_html=True
+            )
+
+    with col2:
+        st.download_button(
+            "Download Transcript",
+            data=(transcript_with_timestamps or transcript_text),
+            file_name=f"transcript_{st.session_state.current_video_id}.txt",
+            mime="text/plain",
+            use_container_width=True
+        )
 
 
 def main():
@@ -487,6 +543,8 @@ def main():
     
     else:
         display_summary_panel()
+        st.markdown("<br>", unsafe_allow_html=True)
+        display_transcript_panel()
         st.markdown("<br>", unsafe_allow_html=True)
         # Display chat interface
         display_chat_interface()
