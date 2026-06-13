@@ -1,229 +1,290 @@
-# 🎥 YouTube ChatBot
+# YouTube ChatBot
 
-An intelligent conversational AI application that allows users to interact with YouTube videos through natural language questions. Simply provide a YouTube video URL, and the chatbot will analyze the video's transcript to answer your questions about the content.
-
-## ✨ Features
-
-- 🎬 **Easy Video Loading**: Paste a YouTube URL or video ID
-- 💬 **Natural Conversations**: Ask questions in plain English about the video content
-- 🧠 **AI-Powered**: Uses OpenAI's GPT models and embeddings for accurate responses
-- 📝 **Transcript Analysis**: Automatically extracts and processes video transcripts
-- 🔍 **Hybrid Retrieval**: Combines BM25 + vector search for higher recall
-- 🔁 **Query Intelligence**: Query rewriting + multi-query expansion for better retrieval
-- 🧾 **Source Citations**: Timestamped sources shown for every answer
-- 🧠 **Video Summary & Topics**: Auto-generated overview and key topics
-- 💾 **Persistent Indexing**: Saves FAISS indexes to disk for fast reloads
-- 📥 **Chat Export**: Download conversation as Markdown
-- 🎨 **Beautiful UI**: Clean and intuitive Streamlit interface
-- 💾 **Conversation Memory**: Maintains context throughout your chat session
-
-## 🏗️ Project Structure
-
-```
-YouTube_ChatBot/
-├── app.py                          # Main Streamlit application
-├── config/
-│   ├── __init__.py
-│   └── config.py                   # Configuration management
-├── src/
-│   ├── __init__.py
-│   ├── chatbot.py                  # ChatBot logic with LangChain
-│   └── utils/
-│       ├── __init__.py
-│       ├── youtube_utils.py        # YouTube video operations
-│       └── text_processor.py       # Text chunking and processing
-├── data/                           # Cached indexes (gitignored)
-├── requirements.txt                # Python dependencies
-├── .env.example                    # Environment variables template
-├── .gitignore                      # Git ignore rules
-└── README.md                       # This file
-```
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Python 3.8 or higher
-- OpenAI API key ([Get one here](https://platform.openai.com/api-keys))
-
-### Installation
-
-1. **Clone or navigate to the project directory:**
-   ```bash
-   cd YouTube_ChatBot
-   ```
-
-2. **Create a virtual environment:**
-   ```bash
-   python -m venv venv
-   
-   # Activate on Linux/Mac:
-   source venv/bin/activate
-   
-   # Activate on Windows:
-   venv\Scripts\activate
-   ```
-
-3. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Set up environment variables:**
-   ```bash
-   # Copy the example file
-   cp .env.example .env
-   
-   # Edit .env and add your OpenAI API key
-   # OPENAI_API_KEY=your_actual_api_key_here
-   ```
-
-### Configuration
-
-Edit the `.env` file with your settings:
-
-```env
-# Required
-OPENAI_API_KEY=your_openai_api_key_here
-
-# Optional - defaults are set
-MODEL_NAME=gpt-3.5-turbo
-EMBEDDING_MODEL=text-embedding-ada-002
-QUERY_TEMPERATURE=0.0
-CHUNK_SIZE=1000
-CHUNK_OVERLAP=200
-RETRIEVAL_K=6
-BM25_K=6
-FINAL_K=6
-MULTIQUERY_COUNT=3
-MAX_CONTEXT_CHARS=8000
-ENABLE_QUERY_REWRITE=true
-ENABLE_MULTIQUERY=true
-ENABLE_COMPRESSION=true
-INDEX_DIR=data/indexes
-SUMMARY_MAX_CHUNKS=6
-SUMMARY_MAX_TOKENS=300
-```
-
-## 🎮 Usage
-
-1. **Start the application:**
-   ```bash
-   streamlit run app.py
-   ```
-
-2. **Open your browser:**
-   - The app will automatically open at `http://localhost:8501`
-   - If not, navigate to the URL manually
-
-3. **Use the chatbot:**
-   - Paste a YouTube URL or video ID in the input field
-   - Click "Load Video" to build the RAG index (use "Rebuild index" if needed)
-   - Start asking questions about the video!
-   - Example questions:
-     - "What is the main topic of this video?"
-     - "Can you summarize the key points?"
-     - "What does the speaker say about [specific topic]?"
-
-## 🛠️ Technology Stack
-
-- **Frontend**: Streamlit
-- **AI/ML**:
-   - OpenAI GPT-3.5/4 for chat
-   - OpenAI Embeddings for semantic search
-   - LangChain for orchestration
-   - FAISS for vector storage (persisted on disk)
-   - BM25 (rank_bm25) for lexical retrieval
-- **YouTube Integration**:
-  - youtube-transcript-api for transcript extraction
-  - pytube for video metadata
-- **Text Processing**: 
-  - RecursiveCharacterTextSplitter for intelligent chunking
-  - tiktoken for token counting
-
-## 📝 How It Works
-
-1. **Video Loading**: When you provide a YouTube URL, the app:
-   - Extracts the video ID
-   - Fetches video metadata (title, author, duration)
-   - Downloads the transcript using YouTube's caption API
-
-2. **Text Processing**: The transcript is:
-   - Cleaned and preprocessed
-   - Split into manageable chunks with overlap
-   - Converted to vector embeddings and indexed with metadata
-   - Stored on disk for fast reloads
-
-3. **Question Answering**: When you ask a question:
-   - The query is rewritten and expanded into multiple search queries
-   - Hybrid retrieval (BM25 + vector) selects the best transcript chunks
-   - Context is compressed and ranked for relevance
-   - The AI generates an answer grounded in retrieved sources with citations
-   - Conversation history is maintained for context
-
-> **Note:** The app does not train a model on your data. It builds a searchable index over the transcript and uses RAG to answer questions.
-
-## 🔒 Privacy & Security
-
-- Your OpenAI API key is stored locally in `.env` (gitignored)
-- Transcript-derived vector indexes are cached locally in `data/indexes` (delete to remove)
-- Conversations are session-only unless you export them
-- All processing happens on your machine and OpenAI's servers
-- No third-party data collection
-
-## ⚠️ Limitations
-
-- Only works with videos that have transcripts/captions available
-- English transcripts work best (other languages supported if available)
-- Very long videos (>2 hours) may take longer to process
-- Answers are limited to what's in the transcript
-
-## 🤝 Contributing
-
-Contributions are welcome! Here are some ideas:
-- Support for multiple languages
-- Add support for video playlists
-- Implement local LLM support
-- Add export chat history feature
-- Improve UI/UX
-
-## 📄 License
-
-This project is open source and available under the MIT License.
-
-## 🐛 Troubleshooting
-
-### "Could not fetch transcript"
-- The video may not have captions available
-- Try a different video with captions enabled
-
-### "API Key not set"
-- Make sure your `.env` file exists
-- Check that `OPENAI_API_KEY` is set correctly
-- Restart the application after setting the key
-
-### Import errors
-- Ensure all dependencies are installed: `pip install -r requirements.txt`
-- Activate your virtual environment
-
-### Rate limiting
-- If you hit OpenAI rate limits, wait a few moments
-- Consider upgrading your OpenAI plan for higher limits
-
-## 📧 Support
-
-For issues and questions:
-- Check existing issues in the repository
-- Create a new issue with detailed information
-- Include error messages and steps to reproduce
-
-## 🙏 Acknowledgments
-
-- OpenAI for GPT and embedding models
-- LangChain for the excellent framework
-- Streamlit for the awesome UI framework
-- The open-source community
+A Streamlit web application that lets you have an AI-powered conversation with any YouTube video. Paste a URL, wait a few seconds for the index to build, then ask questions — the assistant answers using only the video transcript and cites exact timestamps so you can verify every claim.
 
 ---
 
-**Made with ❤️ by Akshat**
+## Features
+
+- **Hybrid RAG retrieval** — combines FAISS vector search with BM25 lexical search for more precise context selection
+- **Query expansion** — automatically rewrites and generates multiple search variants before retrieval
+- **Optional context compression** — an LLM pass trims retrieved chunks to the most relevant sentences
+- **Timestamped citations** — every answer links back to the exact segment of the video
+- **Persistent index cache** — FAISS indexes are saved to disk so re-loading the same video is instant
+- **Multi-language transcripts** — supports 20 languages including Spanish, French, German, Japanese, and more
+- **Video summary** — automatically generates a summary and key topics on load
+- **Conversation memory** — the model retains context across turns within a session
+- **Chat export** — download the full conversation as Markdown
+
+---
+
+## Architecture
+
+### Video loading pipeline
+
+```
+  YouTube URL / ID
+        │
+        ▼
+┌───────────────────┐
+│  URL parsing &    │  extract_video_id()
+│  ID validation    │
+└────────┬──────────┘
+         │
+         ▼
+┌───────────────────┐        ┌──────────────────────┐
+│  Fetch metadata   │──────▶ │  pytube (title,       │
+│  (best-effort)    │        │  author, duration…)   │
+└────────┬──────────┘        └──────────────────────┘
+         │
+         ▼
+┌───────────────────┐        ┌──────────────────────┐
+│  Fetch transcript │──────▶ │  youtube-transcript-  │
+│  segments         │        │  api  {text,start,    │
+└────────┬──────────┘        │        duration}      │
+         │                   └──────────────────────┘
+         ▼
+┌───────────────────┐
+│  Chunk & embed    │  RecursiveCharacterTextSplitter
+│  (TextProcessor)  │  → timestamp metadata per chunk
+└────────┬──────────┘
+         │
+         ▼
+┌───────────────────┐        ┌──────────────────────┐
+│  FAISS index      │        │  BM25 index           │
+│  (vector store)   │        │  (lexical store)      │
+│  saved to disk ◀──┼────────┼──▶ in-memory          │
+└───────────────────┘        └──────────────────────┘
+```
+
+### Query answering pipeline
+
+```
+  User question
+        │
+        ▼
+┌───────────────────┐
+│  Small-talk       │──yes──▶  greeting response (no retrieval)
+│  detection        │
+└────────┬──────────┘
+         │ no
+         ▼
+┌───────────────────┐
+│  Query rewrite    │  "What did he say about X?"
+│  (query LLM)      │──▶ "X explanation keywords"
+└────────┬──────────┘
+         │
+         ▼
+┌───────────────────┐
+│  Multi-query      │  generates N variants of the
+│  expansion        │  rewritten query
+└────────┬──────────┘
+         │  [q1, q2, q3 … qN]  (deduplicated)
+         ▼
+┌────────────────────────────────────────┐
+│            Hybrid retrieval            │
+│                                        │
+│  ┌─────────────┐   ┌─────────────────┐ │
+│  │ FAISS vector│   │   BM25 lexical   │ │
+│  │  search ×N  │   │   search ×N      │ │
+│  └──────┬──────┘   └───────┬─────────┘ │
+│         │                  │            │
+│         └────────┬─────────┘            │
+│                  ▼                       │
+│       Reciprocal-rank fusion             │
+│       (merge & re-score candidates)      │
+└──────────────────┬─────────────────────┘
+                   │
+                   ▼
+        ┌──────────────────┐
+        │  Compression      │  LLMChainExtractor trims each
+        │  (optional)       │  chunk to the relevant sentences
+        └────────┬──────────┘
+                 │
+                 ▼
+        ┌──────────────────┐
+        │  Context assembly │  top-K chunks formatted with
+        │                  │  [idx] (HH:MM:SS-HH:MM:SS) text
+        └────────┬──────────┘
+                 │
+                 ▼
+        ┌──────────────────┐
+        │  Answer LLM       │  responds strictly from context,
+        │  + chat history   │  cites [1], [2] … source indices
+        └────────┬──────────┘
+                 │
+                 ▼
+        ┌──────────────────┐
+        │  Citation filter  │  keeps only sources actually
+        │                  │  referenced in the answer
+        └────────┬──────────┘
+                 │
+                 ▼
+          answer + sources
+```
+
+---
+
+## Prerequisites
+
+- Python 3.10+
+- An [OpenAI API key](https://platform.openai.com/api-keys)
+
+---
+
+## Quickstart
+
+```bash
+# 1. Clone the repository
+git clone <repo-url>
+cd YouTube_ChatBot
+
+# 2. Create and activate a virtual environment
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Configure environment variables
+cp .env.example .env
+# Edit .env and set OPENAI_API_KEY=<your-key>
+
+# 5. Run the application
+streamlit run app.py
+```
+
+The app will open at `http://localhost:8501`.
+
+---
+
+## Configuration
+
+All settings are controlled via `.env`. Copy `.env.example` as a starting point.
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENAI_API_KEY` | *(required)* | OpenAI API key |
+| `MODEL_NAME` | `gpt-3.5-turbo` | Chat model used for answers and query rewriting |
+| `EMBEDDING_MODEL` | `text-embedding-ada-002` | Embedding model for FAISS indexing |
+| `TEMPERATURE` | `0.7` | Sampling temperature for the answer LLM |
+| `QUERY_TEMPERATURE` | `0.0` | Temperature for query rewriting (deterministic) |
+| `SUMMARY_TEMPERATURE` | `0.2` | Temperature for video summarisation |
+| `MAX_TOKENS` | `500` | Max tokens per LLM call |
+| `CHUNK_SIZE` | `1000` | Target character size per document chunk |
+| `CHUNK_OVERLAP` | `200` | Overlap between consecutive chunks |
+| `SNIPPET_MAX_CHARS` | `1200` | Max chars from a single chunk included in the prompt |
+| `RETRIEVAL_K` | `6` | FAISS candidates retrieved per query |
+| `BM25_K` | `6` | BM25 candidates retrieved per query |
+| `FINAL_K` | `6` | Top-K documents sent to the LLM after score fusion |
+| `MULTIQUERY_COUNT` | `3` | Number of additional query variants generated |
+| `MAX_CONTEXT_CHARS` | `8000` | Total character budget for the context block |
+| `ENABLE_QUERY_REWRITE` | `true` | Toggle query rewriting |
+| `ENABLE_MULTIQUERY` | `true` | Toggle multi-query expansion |
+| `ENABLE_COMPRESSION` | `true` | Toggle LLM-based context compression |
+| `INDEX_DIR` | `data/indexes` | Directory for persisted FAISS indexes |
+| `SUMMARY_MAX_CHUNKS` | `6` | Chunks sampled for the auto-summary |
+| `SUMMARY_MAX_TOKENS` | `300` | Max tokens for the summary response |
+
+---
+
+## Usage
+
+1. **Paste a URL** — any standard YouTube link (`watch?v=`, `youtu.be/`, `/shorts/`) or a bare 11-character video ID
+2. **Select language** — choose the transcript language from the dropdown (defaults to English)
+3. **Load Video** — the app fetches the transcript and builds the FAISS index (cached on disk after the first run)
+4. **Ask questions** — type in the chat box; answers include `[1]`, `[2]` citations you can expand to see the source segment and timestamp
+5. **Export** — download the transcript or the full conversation as Markdown
+
+---
+
+## How It Works
+
+### Video loading
+
+- The video ID is extracted from any supported URL format
+- `pytube` fetches metadata (title, author, duration); if that fails, the app continues with transcript-only mode
+- `youtube-transcript-api` downloads the selected language's captions as timestamped segments
+
+### Indexing
+
+- Segments are concatenated and split into overlapping chunks with `RecursiveCharacterTextSplitter`
+- Each chunk is annotated with `start_time`/`end_time` derived from the original segment offsets
+- Chunks are embedded and stored in a FAISS index that is saved to `data/indexes/` for reuse
+
+### Question answering
+
+- The user's question is rewritten and expanded into multiple search queries
+- Each query is run against both the FAISS and BM25 indexes; results are merged by reciprocal-rank fusion
+- Optionally, an LLM compresses the top candidates to the most relevant sentences
+- The final context (with timestamps) is injected into the system prompt; the model answers and cites sources
+
+---
+
+## Technology Stack
+
+| Layer | Library |
+|---|---|
+| UI | Streamlit |
+| LLM & embeddings | OpenAI (`gpt-3.5-turbo`, `text-embedding-ada-002`) |
+| Orchestration | LangChain |
+| Vector store | FAISS (`faiss-cpu`) |
+| Lexical retrieval | `rank_bm25` via `langchain-community` |
+| Transcript extraction | `youtube-transcript-api` |
+| Video metadata | `pytube` |
+| Text splitting | `langchain-text-splitters` |
+
+---
+
+## Project Structure
+
+```
+YouTube_ChatBot/
+├── app.py                      # Streamlit entry point
+├── config/
+│   ├── __init__.py
+│   └── config.py               # Environment-driven configuration
+├── src/
+│   ├── __init__.py
+│   ├── chatbot.py              # YouTubeChatBot — RAG pipeline
+│   └── utils/
+│       ├── __init__.py
+│       ├── youtube_utils.py    # Video metadata, transcript fetching, timestamp formatting
+│       └── text_processor.py  # Chunking & Document construction
+├── data/
+│   └── indexes/                # Cached FAISS indexes (git-ignored)
+├── .env.example                # Environment variable template
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## Troubleshooting
+
+**"Could not fetch transcript"**
+The video either has no captions or the selected language is unavailable. Try enabling auto-generated captions on YouTube or selecting a different language.
+
+**"API Key not set"**
+Ensure `.env` exists and contains `OPENAI_API_KEY=<your-key>`. Restart the app after editing the file.
+
+**Import errors**
+Run `pip install -r requirements.txt` inside your virtual environment and confirm it is activated.
+
+**`pytube` metadata errors**
+`pytube` occasionally breaks when YouTube updates its web app. Metadata failures are non-fatal — the app will continue with the transcript. If needed, pin a specific `pytube` version known to work.
+
+---
+
+## Limitations
+
+- Requires captions to be available on the video (auto-generated captions are supported)
+- Answers are limited to information present in the transcript; the model will not speculate beyond the source material
+- Context window constraints mean that very long or dense videos may not surface every relevant passage in a single query
+- Video metadata (title, author, views) is best-effort — it depends on `pytube` being compatible with the current YouTube frontend
+
+---
+
+## License
+
+MIT
